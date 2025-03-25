@@ -1,10 +1,14 @@
+import json
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from flask_socketio import SocketIO
+from flask_socketio import SocketIO, emit
 import serial
 import threading
 import serial.tools.list_ports
 from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__)
 CORS(app)
@@ -12,11 +16,38 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 priority_bins = []
 citizen_reports = 0
+historical_data = []  # Store historical fill levels
 
 # Environmental factors
 MILEAGE_PER_PRIORITY_BIN = 1.5  # km saved per bin optimization
 CO2_PER_KM = 0.27  # kg CO2 per km saved
 
+# Email Configuration (Use App Passwords)
+EMAIL_SENDER = "pinankbhayani0@gmail.com"  # Change this
+EMAIL_PASSWORD = "lhmi gygl hivg ykkf"  # Use App Password, NOT normal password
+EMAIL_RECEIVER = "manthankathiriya808@gmail.com"  # Change this
+
+def send_email(alert_type, value):
+    """ Sends an email alert when bin level, gas, temperature, or humidity exceeds limits. """
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = EMAIL_SENDER
+        msg["To"] = EMAIL_RECEIVER
+        msg["Subject"] = f"🚨 Smart Waste Alert: {alert_type} Exceeded!"
+
+        body = f"Warning: {alert_type} has exceeded safe limits!\nCurrent Value: {value}\nLocation: GMIT Bhavnagar"
+        msg.attach(MIMEText(body, "plain"))
+
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
+        server.quit()
+        print(f"📧 Email Sent for {alert_type} Alert!")
+    except Exception as e:
+        print(f"❌ Email Sending Failed: {e}")
+
+# Arduino Serial Setup
 arduino_port = 'COM8'
 try:
     ser = serial.Serial(arduino_port, 9600)
@@ -25,8 +56,8 @@ except serial.SerialException as e:
     print(f"❌ Serial connection error: {e}")
     ser = None
 
-
 def read_serial():
+    """ Reads data from Arduino and emits updates via SocketIO. """
     if ser is None:
         return
     while True:
@@ -52,7 +83,23 @@ def read_serial():
                         'timestamp': datetime.now().strftime("%H:%M:%S")
                     }
 
-                    # Check and add to priority queue
+                    # Store historical data
+                    historical_data.append(bin_data)
+
+                    # Emit real-time data
+                    socketio.emit('historical_data', bin_data)
+
+                    # Check & send email alerts
+                    if fill >= 80:
+                        send_email("Bin Full", f"{fill}%")
+                    if gas >= 600:
+                        send_email("High Gas Level", f"{gas} ppm")
+                    if temp >= 35:
+                        send_email("High Temperature", f"{temp}°C")
+                    if humidity >= 70:
+                        send_email("High Humidity", f"{humidity}%")
+
+                    # Add to priority queue if necessary
                     if fill >= 80 or gas >= 600 or temp >= 35 or humidity >= 70:
                         priority_bins.append(bin_data)
 
@@ -60,29 +107,28 @@ def read_serial():
             except Exception as e:
                 print("⚠️ Parsing error:", e)
 
-
+# Start Arduino Serial Reading
 serial_thread = threading.Thread(target=read_serial)
 serial_thread.daemon = True
 serial_thread.start()
 
 @app.route('/')
 def home():
-    return jsonify({"status": "Smart Waste Backend Running 🚀", "routes": ["/priority-bins", "/clear-priority", "/citizen-report", "/stats"]})
+    return jsonify({"status": "Smart Waste Backend Running 🚀",
+                    "routes": ["/priority-bins", "/clear-priority", "/citizen-report", "/stats", "/historical-data"]})
 
 @app.route('/priority-bins')
 def get_priority_bins():
     return jsonify(priority_bins)
-
 
 @app.route('/clear-priority', methods=['POST'])
 def clear_priority():
     priority_bins.clear()
     return jsonify({"status": "Priority queue cleared!"})
 
-
 @app.route('/citizen-report', methods=['POST'])
 def report():
-    global citizen_reports, mileage_saved_km, co2_saved_kg
+    global citizen_reports
     citizen_reports += 1
 
     # Fake bin for citizen report
@@ -91,15 +137,12 @@ def report():
         'gas': 500,
         'temperature': 30,
         'humidity': 65,
-        'location': "21.7187739, 72.1219380",  # Static/fake for now
+        'location': "21.7187739, 72.1219380",
         'place': "Reported Location",
         'timestamp': datetime.now().strftime("%H:%M:%S")
     }
     priority_bins.append(bin_data)
-    mileage_saved_km += 1
-    co2_saved_kg += 0.5
     return jsonify({"status": "Citizen report received & added to priority bins!"})
-
 
 @app.route('/stats')
 def stats():
@@ -111,6 +154,9 @@ def stats():
         "citizen_reports": citizen_reports
     })
 
+@app.route('/historical-data')
+def get_historical_data():
+    return jsonify(historical_data)
 
 if __name__ == '__main__':
     socketio.run(app, host='0.0.0.0', port=5000, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)
