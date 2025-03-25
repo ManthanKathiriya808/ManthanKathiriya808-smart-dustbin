@@ -1,0 +1,13 @@
+/* @tailwind base;
+@tailwind components;
+@tailwind utilities;
+ */
+
+ @import "tailwindcss";
+
+
+ 
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+
+
