@@ -16,17 +16,18 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 priority_bins = []
 citizen_reports = 0
-historical_data = []  # Store historical fill levels
+historical_data = []
 
 # Environmental factors
-MILEAGE_PER_PRIORITY_BIN = 1.5  # km saved per bin optimization
-CO2_PER_KM = 0.27  # kg CO2 per km saved
+MILEAGE_PER_PRIORITY_BIN = 1.5
+CO2_PER_KM = 0.27
+
+
 
 # Email Configuration (Use App Passwords)
 EMAIL_SENDER = "pinankbhayani0@gmail.com"  # Change this
 EMAIL_PASSWORD = "lhmi gygl hivg ykkf"  # Use App Password, NOT normal password
 EMAIL_RECEIVER = "manthankathiriya808@gmail.com"  # Change this
-
 def send_email(alert_type, value):
     """ Sends an email alert when bin level, gas, temperature, or humidity exceeds limits. """
     try:
@@ -48,7 +49,7 @@ def send_email(alert_type, value):
         print(f"❌ Email Sending Failed: {e}")
 
 # Arduino Serial Setup
-arduino_port = 'COM8'
+arduino_port = 'COM15'
 try:
     ser = serial.Serial(arduino_port, 9600)
     print(f"✅ Arduino found on {arduino_port}")
@@ -112,11 +113,6 @@ serial_thread = threading.Thread(target=read_serial)
 serial_thread.daemon = True
 serial_thread.start()
 
-@app.route('/')
-def home():
-    return jsonify({"status": "Smart Waste Backend Running 🚀",
-                    "routes": ["/priority-bins", "/clear-priority", "/citizen-report", "/stats", "/historical-data"]})
-
 @app.route('/priority-bins')
 def get_priority_bins():
     return jsonify(priority_bins)
@@ -125,13 +121,16 @@ def get_priority_bins():
 def clear_priority():
     priority_bins.clear()
     return jsonify({"status": "Priority queue cleared!"})
+@app.route('/')
+def home():
+    return jsonify({"status": "Smart Waste Backend Running 🚀",
+                    "routes": ["/priority-bins", "/clear-priority", "/citizen-report", "/stats", "/historical-data"]})
 
 @app.route('/citizen-report', methods=['POST'])
 def report():
     global citizen_reports
     citizen_reports += 1
 
-    # Fake bin for citizen report
     bin_data = {
         'fill_level': 95,
         'gas': 500,
