@@ -2,3 +2,6 @@ flask
 flask-socketio
 pyserial
 
+EMAIL_SENDER = "pinankbhayani0@gmail.com"  # Change this
+EMAIL_PASSWORD = "lhmi gygl hivg ykkf"  # Use App Password, NOT normal password
+EMAIL_RECEIVER = "manthankathiriya808@gmail.com"  # Change this
